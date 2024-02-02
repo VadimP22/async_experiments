@@ -1,90 +1,59 @@
 #include <iostream>
+#include <type_traits>
 
-template <typename Fn, typename ArgT, typename ... Next> struct Async {
-    ArgT arg;
-    bool is_executed = false;
-    Async<Next...> next;
+template <typename Fn, typename Arg, typename ... Other> struct Async {
+    Arg arg;
+    Async<Other...> next;
 
-    Async(Fn fn, ArgT arg) : arg(arg) { }
-    Async(Fn fn) {}
+    Async(Fn fn, Arg arg) : arg(arg) {}
+    Async(Fn fn) : arg(arg) {}
     Async() {}
-   
+
     void Execute() {
         Fn fn;
-        next.arg = fn(arg); 
+        next.arg = fn(arg);
     }
 
-    bool Poll() {
-        if (is_executed) {
-            return next.Poll();
-        } else {
-            Execute();
-            is_executed = true;
-        }
-
-        return false;
+    template<typename ArgT> auto Then(auto fn) -> Async<Fn, Arg, Other..., decltype(fn), ArgT> {
+        return Async<Fn, Arg, Other..., decltype(fn), ArgT>();
     }
-
-    template<typename NextFn> auto Then(NextFn fn) -> Async<Fn, ArgT, Next..., NextFn, decltype(Fn{}(arg))> {
-        Fn f;
-        return Async<Fn, ArgT, Next..., NextFn, decltype(Fn{}(arg))>(f);
-    }
-
 };
 
-template <typename Fn, typename ArgT> struct Async<Fn, ArgT> {
-    ArgT arg;
-    bool is_executed = false;
-
-    Async(Fn fn, ArgT arg) : arg(arg) { }
-    Async(Fn fn) {}
+template <typename Fn, typename Arg> struct Async <Fn, Arg> {
+    Arg arg;
+    
+    Async(Fn fn, Arg arg) : arg(arg) {}
+    Async(Fn fn) : arg(arg) {}
     Async() {}
-
-    template<typename NextFn> auto Then(NextFn fn) -> Async<Fn, ArgT, NextFn, decltype(Fn{}(arg))> {
-        Fn f;
-        return Async<Fn, ArgT, NextFn, decltype(Fn{}(arg))>(f);
-    }
 
     void Execute() {
         Fn fn;
-        fn(arg); 
+        fn(arg);
     }
 
-    bool Poll() {
-        if(!is_executed) {
-            Execute();
-            is_executed = true;
-        }
-
-        return true;
+    template<typename ArgT> auto Then(auto fn) -> Async<Fn, Arg, decltype(fn), ArgT> {
+        return Async<Fn, Arg, decltype(fn), ArgT>();
     }
-
 };
 
 int main() {
-    auto a = Async([](auto f){
-        std::cout << "[lambda 1] takes " << f << std::endl;
-        return 1234;
-    }, 4).Then([](auto f){
-        std::cout << "[lambda 2] takes " << f << std::endl;
-        return "ahaha";
-    }).Then([](auto f){       
-        std::cout << "[lambda 3] takes " << f << std::endl;
-        return 123;
-    });
-    // auto b = Contaioner([](){});
-    // while (!a.Poll()) {}
 
-    std::cout << sizeof(a) << std::endl;
-    // a.Poll();
+    auto a = Async([](auto a){
+        std::cout << "lambda 1 taskes " << a << std::endl;
+        return 123;
+    }, 33).Then<int>([](auto val){
+        std::cout << "lambda 2 taskes " << val << std::endl;
+        return "fwe";
+    }).Then<const char*>([](auto value){
+        std::cout << "lambda 3 taskes " << value << std::endl;
+        return 234;        
+    });
 
     a.Execute();
     a.next.Execute();
-    // a.next.next.Execute();
-    // a.next.next.next.Execute();
-    // a.next.next.next.next.Execute();
+    a.next.next.Execute();
 
-    // std::cout << "sizeof container " << sizeof(a) << std::endl;
+    std::cout << sizeof(a) << std::endl;
 
     return 0;
 }
