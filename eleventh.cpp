@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <tuple>
 #include <type_traits>
 
 template <typename Fn, typename Arg> class BasicTask {
@@ -26,7 +27,7 @@ template <typename Fn, typename Arg> class BasicTask {
     Ret result_;
 };
 
-template <typename Task, typename ... Tasks> class Pollable {
+template <typename Task, typename ... Tasks> class StatelessPollable {
     public:
 
     template <typename ... Args> bool PollWithArgs(Args ... args) {
@@ -40,10 +41,10 @@ template <typename Task, typename ... Tasks> class Pollable {
 
     // private:
     Task task_;
-    Pollable<Tasks...> next_;
+    StatelessPollable<Tasks...> next_;
 };
 
-template <typename Task> class Pollable<Task> {
+template <typename Task> class StatelessPollable<Task> {
     public:
     template <typename ... Args> bool PollWithArgs(Args ... args) {
         if (!task_.IsReady())
@@ -74,33 +75,44 @@ template <typename Pollable, typename Arg> class StatefullPollable {
     Arg arg_;
 };
 
-template <typename Fn, typename Arg, typename ... Other> class Async {
+template <typename Fn, typename Arg, typename ... Other> class BasicAsync {
     public:
 
-    template <typename ArgType> Async(Fn fn, Arg arg = (ArgType) 0) {}
-    Async() {}
+    BasicAsync() {}
     
     template <typename NextArg> auto Then(auto nextfn) {
-        return Async<Fn, Arg, Other..., decltype(nextfn), NextArg, BasicTask<decltype(nextfn), NextArg>>();
+        return BasicAsync<Fn, Arg, Other..., decltype(nextfn), NextArg>();
     }
 
     private:
     // Pollable<TaskType> pollable_;
 };
 
-template <typename Fn, typename Arg, typename Task> class Async<Fn, Arg, Task> {
+template <typename Fn, typename Arg> class BasicAsync<Fn, Arg> {
     public:
 
-    template <typename ArgType> Async(Fn fn, Arg arg = (ArgType) 0) {}
-    Async() {}
+    BasicAsync() {}
 
     template <typename NextArg> auto Then(auto nextfn) {
-        return Async<Fn, Arg, Task, decltype(nextfn), NextArg, BasicTask<decltype(nextfn), NextArg>>();
+        return BasicAsync<Fn, Arg, decltype(nextfn), NextArg>();
     }
 
     private:
     // Pollable<TaskType> pollable_;
 };
+
+template<typename ArgT> auto Async(auto fn) {
+    return BasicAsync<decltype(fn), ArgT>();
+}
+
+// TODO Make it recursive
+template <typename ... Args> auto MakeTask(BasicAsync<Args...> async, auto p_arg) {
+    auto args = std::tuple<Args...>();
+    auto [fn1, arg1, fn2, arg2, fn3, arg3] = args;
+    StatelessPollable<BasicTask<decltype(fn1), decltype(arg1)>, BasicTask<decltype(fn2), decltype(arg2)>, BasicTask<decltype(fn3), decltype(arg3)>> stateless;
+    StatefullPollable<decltype(stateless), decltype(p_arg)> statefull(p_arg);
+    return statefull;
+}
 
 int main() {
     auto logint = [](int i) {
@@ -138,6 +150,10 @@ int main() {
         std::cout << str << std::endl;
         return 0;
     });
+
+    auto b = MakeTask(a, 500);
+
+    while (!b.Poll()) {}
 
     return 0;
 }
